@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include<iostream>
 #include<unordered_map>
+#include<unordered_set>
 #include<vector>
 #include<utility>
 #include<queue>
@@ -21,15 +22,41 @@ public:
 private:
 	unordered_map<Vertex, vector<pair<Vertex, Distance>>> _data;
 
-	bool relax(const Vertex& a, const Vertex& v, unordered_map<Vertex, pair<Vertex, Distance>>& dist_pred) {
-		auto tmp = _data.at(a).begin();
-		while (tmp->first != v) ++tmp;
-		if (dist_pred.at(v).second > dist_pred.at(a).second + tmp->second) {
-			dist_pred.at(v).second = dist_pred.at(a).second + tmp->second;
-			dist_pred.at(v).first = a;
-			return true;
+	unordered_map<Vertex, pair<Vertex, Distance>> BellmanFordAlg(const Vertex& from) const{
+		unordered_map<Vertex, pair<Vertex, Distance>> shortest_ways;
+		vector<Vertex> vert = vertices();
+		for (auto i : vert) {
+			shortest_ways[i] = make_pair(-1, 1e9);
 		}
-		return false;
+
+		shortest_ways[from].second = 0;
+		vector<Edge> _edges = edges(from);
+		for (auto edge : _edges) {
+			if (shortest_ways[edge.to].second > shortest_ways[from].second + edge.d) {
+				shortest_ways[edge.to].second = shortest_ways[from].second + edge.d;
+				shortest_ways[edge.to].first = from;
+			}
+		}
+
+		for (int i = 0; i < vert.size(); ++i) {
+			vector<Edge> _edges = edges(i);
+			for (auto edge : _edges) {
+				if ((shortest_ways[i].second != 1e9) && shortest_ways[edge.to].second > shortest_ways[i].second + edge.d) {
+					shortest_ways[edge.to].second = shortest_ways[i].second + edge.d;
+					shortest_ways[edge.to].first = i;
+				}
+			}
+		}
+
+		for (auto& [vertex, edges] : _data) {
+			for (auto j : edges) {
+				if ((shortest_ways[vertex].second != 1e9) && shortest_ways[j.first].second > shortest_ways[vertex].second + j.second) {
+					shortest_ways.clear();
+					return shortest_ways;
+				}
+			}
+		}
+		return shortest_ways;
 	}
 public:
 	Graph() {
@@ -37,7 +64,7 @@ public:
 	}
 
 	bool has_vertex(const Vertex& v) const {
-		return _data.count(v) > 0;
+		return _data.contains(v);
 	}
 
 	void add_vertex(const Vertex& v) {
@@ -46,18 +73,19 @@ public:
 
 	bool remove_vertex(const Vertex& v) {
 		if (!has_vertex(v)) return false;
-		for (Vertex i = 0; i < _data.size(); ++i)
+		for (auto& e : _data)
 		{
+			Vertex i = e.first;
 			if (i == v) continue;
 			int j = 0;
-			auto tmp = _data[i].begin();
-			while (tmp != _data[i].end()) {
-				if (tmp->first == v) {
-					_data[i].erase(tmp);
-					tmp = _data[i].begin() + j;
+			auto iter = _data[i].begin();
+			while (iter != _data[i].end()) {
+				if (iter->first == v) {
+					_data[i].erase(iter);
+					iter = _data[i].begin() + j;
 				}
 				else {
-					++tmp;
+					++iter;
 					++j;
 				}
 			}
@@ -71,7 +99,7 @@ public:
 			cout << v.first << ": ";
 			for (auto& e : v.second)
 			{
-				cout << e.first << " (" << e.second << "), ";
+				cout << e.first << " [" << e.second << "], ";
 			}
 			cout << endl;
 		}
@@ -87,7 +115,8 @@ public:
 	}
 
 	void add_edge(const Vertex& from, const Vertex& to, const Distance& dist) {
-		if (has_vertex(from) && has_vertex(to)) _data[from].push_back(make_pair(to, dist));
+		if (!has_vertex(from) || !has_vertex(to)) return;
+		_data[from].push_back(make_pair(to, dist));
 	}
 
 	bool remove_edge(const Vertex& from, const Vertex& to) {
@@ -138,47 +167,32 @@ public:
 		return _data.size();
 	}
 
-	vector<Vertex> dfs_algorithm(const Vertex& start) {
-		vector<bool> visited;
-		for (size_t i = 0; i < _data.size(); i++)
-		{
-			visited.push_back(false);
-		}
-		vector<Vertex> vec;
-		queue<Vertex> queue;
-		queue.push(start);
-		visited[start] = true;
-		while (!queue.empty()) {
-			Vertex u = queue.front();
-			vec.push_back(u);
-			queue.pop();
-			for (const auto& v : _data[u]) {
-				if (!visited[v.first]) {
-					visited[v.first] = true;
-					queue.push(v.first);
-				}
+	void walk_recursive(const Vertex& vertex, vector<Vertex>& result, unordered_set<Vertex>& visited) const {
+		result.push_back(vertex);
+		visited.insert(vertex);
+		for (auto& edge : edges(vertex)) {
+			if (!visited.count(edge.to)) {
+				walk_recursive(edge.to, result, visited);
 			}
 		}
-		return vec;
 	}
 
-	vector<Edge> dijkstra_algorithm(const Vertex& from, const Vertex& to) {
-		unordered_map<Vertex, pair<Vertex, Distance>> dist_pred;
+
+	vector<Vertex> walk(const Vertex& start_vertex) const {
+		vector<Vertex> result;
+		unordered_set<Vertex> visited;
+		walk_recursive(start_vertex, result, visited);
+		return result;
+	}
+
+	vector<Edge> shortest_path(const Vertex& from, const Vertex& to) const{
+		if (!has_vertex(from) || !has_vertex(to)) throw runtime_error("Vertex is not found.");
+		unordered_map<Vertex, pair<Vertex, Distance>> dist_pred = BellmanFordAlg(from);
 		vector<Edge> path;
+		if (dist_pred.empty()) {
+			return path;
+		}
 		vector<Vertex> vertices = this->vertices();
-		stack<int> stack;
-		for (auto& e : vertices) {
-			dist_pred[e] = make_pair(-1, 1e9);
-		}
-		dist_pred[from] = make_pair(-1, 0);
-		stack.push(from);
-		while (!stack.empty()) {
-			Vertex u = stack.top();
-			stack.pop();
-			for (auto& v : _data.at(u)) {
-				if (relax(u, v.first, dist_pred)) stack.push(v.first);
-			}
-		}
 		Vertex finish = to;
 		pair<Vertex, Distance> pred = dist_pred.at(finish);
 		if (pred.second == 1e9) {
@@ -194,28 +208,37 @@ public:
 		return path;
 	}
 
-	const Vertex& optimal_point() {
-		vector<Vertex> vertices = this->vertices();
-		Vertex warehouse = Vertex();
-		Distance max = 1e9;
-		for (auto& from : vertices) {
-			Distance current_max = -1e9;
-			Vertex current_warehouse = Vertex();
-			for (auto& to : vertices) {
-				if (from != to) {
-					vector<Edge> path = dijkstra_algorithm(from, to);
-					Distance d = (path.end() - 1)->d;
-					if (d > current_max && d != 1e9) {
-						current_max = d;
-					}
-				}
-			}
-
-			if (current_max != -1e9 && current_max < max) {
-				warehouse = from;
-				max = current_max;
+	Distance count_shortest_path(const Vertex& from, const Vertex& to) const
+	{
+		Distance result = 0;
+		auto path = this->shortest_path(from, to);
+		if (!path.empty())
+		{
+			for (auto& v : path) {
+				result += v.d;
 			}
 		}
-		return warehouse;
+		return result;
 	}
 };
+
+template<typename Vertex, typename Distance = double>
+Vertex find_warehouse(const Graph<Vertex, Distance> &graph) {
+	Vertex warehouse;
+	Distance min_avg_distance = 1e9;
+
+	for (const Vertex& vertex : graph.vertices()) {
+		Distance sum_distance = 0;
+		for (const Vertex& other_vertex : graph.vertices()) {
+			if (vertex != other_vertex) {
+				sum_distance += graph.count_shortest_path(vertex, other_vertex);
+			}
+		}
+		int avg_distance = sum_distance / (graph.order() - 1);
+		if (avg_distance < min_avg_distance) {
+			min_avg_distance = avg_distance;
+			warehouse = vertex;
+		}
+	}
+	return warehouse;
+}
